@@ -1,4 +1,7 @@
-
+// HURDLE: The content glob was originally "./src*.{js,jsx}" (missing "/**/"), which meant
+// Tailwind couldn't find ANY component files. It purged ALL utility classes from the production
+// build, rendering the entire app as unstyled plain text. The fix was adding "/**/" to the glob
+// so Tailwind recursively scans all subdirectories under src/.
 export default {
   content: ["./index.html", "./src/**/*.{js,jsx}"],
   theme: {

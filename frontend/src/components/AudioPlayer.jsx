@@ -3,6 +3,10 @@ import { Volume2, Loader2, Pause } from 'lucide-react'
 
 const API = '/api'
 
+// HURDLE: ElevenLabs TTS returns raw audio bytes, not a URL. The browser can't just set
+// audio.src to a POST response. Solution: fetch the response as a Blob, create an object URL
+// via URL.createObjectURL(), and feed that to an Audio element. We cache the blob URL so
+// replaying the same summary doesn't hit the API again.
 export default function AudioPlayer({ text, className = '' }) {
   const [state, setState] = useState('idle') // idle | loading | playing | error
   const audioRef = useRef(null)

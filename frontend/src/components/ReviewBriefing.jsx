@@ -93,13 +93,23 @@ export default function ReviewBriefing({ briefing }) {
   const [phase, setPhase] = useState('setup') // setup | reviewing | results
   const [itemResults, setItemResults] = useState([])
   const [missedItems, setMissedItems] = useState([])
-  const [reviewQueue, setReviewQueue] = useState(null) // null = all items, array = specific indices to review
+  // HURDLE: Re-review was the hardest state management problem in the app. When items are flagged
+  // as "inattentive," we re-run the full attention-tracked review for just those items — not static
+  // cards. reviewQueue tracks which items are up (null = all, array = specific indices for re-review).
+  // This required a two-layer index system: currentIndex (position in queue) → activeItemIndex (actual item).
+  const [reviewQueue, setReviewQueue] = useState(null)
   const [isReReview, setIsReReview] = useState(false)
   const videoRef = useRef(null)
   const recordingInterval = useRef(null)
+  // HURDLE: Camera showed blank screen despite granting permissions. The <video> element in the
+  // 'setup' phase captured the stream, but React rendered a DIFFERENT <video> in 'reviewing' phase.
+  // Fix: store stream in a ref, transition phase first, then attach via useEffect on mount.
   const cameraStreamRef = useRef(null)
   const sessionInitRef = useRef(false)
 
+  // HURDLE: Classic React stale closure bug — advanceItem() captured an old copy of itemResults,
+  // so finishReview() received stale/incomplete data after multiple re-reviews. Fix: sync a ref
+  // to the latest state on every update, then read from the ref inside the closure.
   const itemResultsRef = useRef([])
   useEffect(() => { itemResultsRef.current = itemResults }, [itemResults])
 
@@ -128,6 +138,10 @@ export default function ReviewBriefing({ briefing }) {
     }
   }, [activeItemIndex, phase, attention])
 
+  // HURDLE: This useEffect is the camera-attach lifecycle fix. We acquire the camera stream BEFORE
+  // transitioning to 'reviewing', but we can't attach it to the <video> element until after React
+  // mounts it. So we wait for phase === 'reviewing' AND videoRef.current to exist, then attach.
+  // sessionInitRef prevents double-initialization on re-renders.
   useEffect(() => {
     if (phase !== 'reviewing' || !videoRef.current) return
     if (sessionInitRef.current) return
@@ -150,8 +164,10 @@ export default function ReviewBriefing({ briefing }) {
     attachCamera()
   }, [phase])
 
+  // HURDLE: Camera streams leaked between re-reviews. Each re-review called getUserMedia() again
+  // without stopping the old stream, stacking up open camera handles. Eventually the browser
+  // refused to grant a new stream. Fix: always stop() all tracks on the old stream first.
   const acquireCamera = async () => {
-
     if (cameraStreamRef.current) {
       cameraStreamRef.current.getTracks().forEach(t => t.stop())
       cameraStreamRef.current = null
@@ -206,7 +222,9 @@ export default function ReviewBriefing({ briefing }) {
     }
 
     if (isReReview) {
-
+      // HURDLE: On re-review, we need to MERGE the new results into the existing results
+      // (replacing entries for re-reviewed items) rather than appending — otherwise items
+      // get duplicate result entries and the report shows wrong data.
       setItemResults(prev => {
         const updated = [...prev]
         for (const result of finalResults) {
@@ -225,7 +243,9 @@ export default function ReviewBriefing({ briefing }) {
       )
       setMissedItems(stillMissed)
     } else {
-
+      // HURDLE: For initial review, we originally did setItemResults(prev => [...prev, ...finalResults])
+      // which APPENDED to any leftover state from a previous review. After resetting and re-running,
+      // you'd get doubled results. Fix: set directly instead of appending.
       setItemResults(finalResults)
 
       const missed = finalResults.filter(
@@ -266,6 +286,11 @@ export default function ReviewBriefing({ briefing }) {
     sessionInitRef.current = false
   }
 
+  // HURDLE: Re-review broke after multiple retries of being inattentive. Multiple issues compounded:
+  // 1) sessionInitRef wasn't reset → camera session never re-initialized
+  // 2) camera streams stacked up → browser refused new getUserMedia calls
+  // 3) itemResults accumulated stale data across attempts
+  // All three had to be fixed together for re-review to work reliably on the 3rd, 4th, 5th try.
   const startReReview = async () => {
     const missedIndices = missedItems.map(m => m.itemIndex)
 
@@ -422,6 +447,10 @@ export default function ReviewBriefing({ briefing }) {
           {}
           <div className="flex-1">
             <AnimatePresence mode="wait">
+              {/* HURDLE: AnimatePresence needs a unique key to trigger exit/enter animations.
+                  Using just activeItemIndex caused stale animations during re-review because the
+                  same item index was re-visited. Prefixing with 're' for re-reviews forces React
+                  to treat it as a new element, properly triggering the slide animation. */}
               <motion.div
                 key={`${isReReview ? 're' : ''}${activeItemIndex}`}
                 initial={{ opacity: 0, x: 20 }}

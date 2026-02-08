@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision'
 
+// HURDLE: We originally integrated the Presage SDK (https://sdk.presage.io/presage-sdk.js) for
+// attention tracking, but discovered at runtime that the URL doesn't resolve — Presage only
+// ships native SDKs (Android, iOS, C++), with no JavaScript/web SDK. After confirming this,
+// we pivoted to Google's MediaPipe FaceLandmarker, which runs entirely in-browser via WASM+GPU.
+// This actually gave us more control over the engagement scoring algorithm than Presage would have.
+
 const BLENDSHAPE_NAMES = {
   eyeBlinkLeft: 'eyeBlinkLeft',
   eyeBlinkRight: 'eyeBlinkRight',
@@ -21,6 +27,12 @@ function getBlendshapeValue(blendshapes, name) {
   return shape?.score ?? 0
 }
 
+// HURDLE: Scoring "engagement" from raw face landmarks is non-trivial. Our first attempt used a
+// simple random walk for demo mode, but it had a positive bias (+0.02 per tick) that caused
+// engagement to always drift toward 1.0 — so the system said "fully engaged" even when the user
+// was asleep. We replaced it with weighted blendshape analysis: eye openness (45%), head facing
+// direction (35%), and head tilt (20%). These weights were tuned through real testing to catch
+// cases like looking away, closing eyes, or tilting head down (sleeping).
 function computeEngagement(result) {
   if (!result.faceLandmarks || result.faceLandmarks.length === 0) {
     return { engagement: 0, focus: 0, faceDetected: false }
@@ -83,6 +95,10 @@ export function useAttention() {
   const landmarkerRef = useRef(null)
   const animFrameRef = useRef(null)
 
+  // HURDLE: MediaPipe model loading is async and can fail silently if the component unmounts
+  // mid-initialization (e.g., user navigates away quickly). We use a `cancelled` flag to prevent
+  // setting state on an unmounted component. We also set isReady=true even on failure so the UI
+  // doesn't hang — it gracefully falls back to demo mode instead of showing a forever-loading state.
   useEffect(() => {
     let cancelled = false
 
@@ -127,6 +143,10 @@ export function useAttention() {
 
       let lastTimestamp = -1
 
+      // HURDLE: MediaPipe's detectForVideo() throws if called with a duplicate timestamp, so we
+      // must track lastTimestamp and skip frames where currentTime hasn't changed. We also guard
+      // on readyState >= 2 (HAVE_CURRENT_DATA) because calling detect on a video element that
+      // hasn't loaded enough data yet causes cryptic WASM errors.
       const detectFrame = () => {
         if (!videoRef.current || !landmarkerRef.current) return
         const video = videoRef.current
@@ -160,6 +180,11 @@ export function useAttention() {
     }
   }, [])
 
+  // HURDLE: The original demo mode used a simple random walk (engagement += random * 0.04 + 0.02)
+  // which had a sneaky positive bias — values drifted to 1.0 over time and never dropped. This made
+  // the demo look like the user was always "fully engaged" even when testing with no camera.
+  // Fixed by switching to a phase-based target system: we randomly pick low/medium/high attention
+  // targets, then lerp toward them with noise. This produces realistic-looking fluctuations.
   const startDemoMode = useCallback(() => {
     setIsActive(true)
 

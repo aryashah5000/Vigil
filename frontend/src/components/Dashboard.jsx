@@ -27,7 +27,10 @@ export default function Dashboard({ briefings, onSelect }) {
   const warningCount = allItems.filter(i => i.severity === 'warning').length
   const machineCount = new Set(allItems.map(i => i.machine_id).filter(Boolean)).size
 
-  // Entity counts across all briefings
+  // HURDLE: Entity data lives nested inside each briefing's structured.entities object, with
+  // three separate arrays (machines, parts, failure_modes). Flattening + deduplicating across
+  // all briefings requires careful handling of the optional chaining; any briefing might lack
+  // entities entirely if it was created before the NER pipeline was added.
   const allEntities = briefings.flatMap(b => {
     const ent = b.structured?.entities || {}
     return [...(ent.machines || []), ...(ent.parts || []), ...(ent.failure_modes || [])]

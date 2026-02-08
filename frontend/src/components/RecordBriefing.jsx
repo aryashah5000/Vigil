@@ -19,6 +19,9 @@ export default function RecordBriefing({ onCreated }) {
       return
     }
 
+    // HURDLE: Web Speech API is not standardized; Chrome uses webkitSpeechRecognition, Firefox
+    // doesn't support it at all, and Safari has partial support. We check both prefixed and
+    // unprefixed versions and alert the user if neither exists, since this is a core input method.
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SpeechRecognition) {
       alert('Speech recognition not supported in this browser. Please use Chrome.')

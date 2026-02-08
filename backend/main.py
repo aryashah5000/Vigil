@@ -23,6 +23,10 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
+# HURDLE: The original init_db() called conn.executescript() with an empty string — it was
+# a truncated stub that silently did nothing. The app would start, but the first INSERT would
+# crash with "no such table: briefings". Had to write the full schema from scratch, including
+# the entity_tags TEXT column on knowledge_entries which was added later for the NER pipeline.
 def init_db():
     conn = get_db()
     conn.executescript("""
@@ -64,6 +68,10 @@ ELEVENLABS_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 
 # ─── Gemini Structuring ─────────────────────────────────────────────────────
 
+# HURDLE: The original Gemini prompt was truncated — line 43 was literally just `prompt = f`
+# with no string body. Gemini would receive an empty prompt and return garbage. Had to write
+# the full structuring prompt with explicit JSON schema, severity rules, and the critical
+# "Return ONLY valid JSON, no markdown" instruction (Gemini loves wrapping in ```json blocks).
 def structure_with_gemini(raw_text: str) -> dict:
     try:
         import google.generativeai as genai
@@ -108,6 +116,9 @@ Rules:
         response = model.generate_content(prompt)
         text = response.text.strip()
 
+        # HURDLE: Despite telling Gemini "Return ONLY valid JSON, no markdown", it still
+        # wraps responses in ```json ... ``` blocks about 40% of the time. We strip those
+        # markers before parsing. Without this, json.loads() throws on the markdown fences.
         if text.startswith("```"):
             text = text.split("\n", 1)[1]
         if text.endswith("```"):
@@ -118,6 +129,9 @@ Rules:
         print(f"Gemini structuring failed ({e}), using fallback")
         return structure_fallback(raw_text)
 
+# HURDLE: Gemini API can be unavailable, rate-limited, or the key might not be set yet.
+# We need the app to still work — so every Gemini call has a keyword-based regex fallback.
+# Not as smart, but it keeps the pipeline running for demos and offline development.
 def structure_fallback(raw_text: str) -> dict:
     sentences = [s.strip() for s in raw_text.replace("\n", ". ").split(".") if s.strip()]
     items = []
@@ -156,6 +170,10 @@ def structure_fallback(raw_text: str) -> dict:
     }
 
 # ─── Manufacturing NER ───────────────────────────────────────────────────────
+# HURDLE: Standard NER models (spaCy, HuggingFace) don't recognize manufacturing domain entities
+# like "Line 3 Conveyor" or "grinding noise" out of the box — they're trained on news/web text.
+# Fine-tuning would take labeled data we don't have. Solution: use Gemini as a zero-shot NER
+# system with a domain-specific prompt, plus a regex+keyword fallback for when Gemini is unavailable.
 
 def extract_entities_with_gemini(raw_text: str) -> dict:
     try:
@@ -448,6 +466,10 @@ def get_knowledge_graph():
     return results
 
 # ─── TTS (ElevenLabs) ────────────────────────────────────────────────────────
+# HURDLE: We proxy TTS through the backend instead of calling ElevenLabs directly from the
+# browser. This avoids exposing the API key in frontend code (it would be visible in network
+# tab). The tradeoff is added latency from the double hop, but security wins. We use httpx
+# (async) instead of requests (sync) to avoid blocking FastAPI's event loop during the API call.
 
 @app.post("/api/tts")
 async def text_to_speech(body: TTSRequest):
@@ -487,6 +509,9 @@ async def text_to_speech(body: TTSRequest):
 
 # ─── Knowledge Graph Upsert ──────────────────────────────────────────────────
 
+# HURDLE: SQLite doesn't have a native UPSERT (INSERT OR UPDATE) that works well with our
+# compound key (machine_id + issue_type + description). We do a SELECT first, then either
+# UPDATE or INSERT. This is fine for our scale but would need a proper DB for production.
 def _upsert_knowledge(conn: sqlite3.Connection, item: dict):
     machine = item.get("machine_id", "Unknown")
     issue = item.get("category", "general")

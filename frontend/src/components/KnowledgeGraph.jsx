@@ -17,6 +17,10 @@ const SEVERITY_COLORS = {
   info: { text: 'text-signal-blue', bg: 'bg-signal-blue/10', border: 'border-signal-blue/20' },
 }
 
+// HURDLE: entity_tags come from the backend as a JSON string that gets parsed into an array.
+// Older entries (created before the NER pipeline) have null entity_tags, so we guard with
+// optional chaining (entry.entity_tags?.length). Without this, the map() call would crash
+// on legacy data.
 export default function KnowledgeGraph() {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)

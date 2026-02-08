@@ -1,8 +1,12 @@
+// HURDLE: The entire app runs as a single-page React shell with client-side routing (no
+// react-router — just useState). We considered react-router but it was overkill for 4 pages
+// and added complexity around preserving ReviewBriefing state (camera stream, attention session)
+// across navigations. Keeping it simple with conditional rendering avoids unmount/remount issues.
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Mic, ClipboardCheck, Brain,
-  AlertTriangle, ChevronRight, Radio, Zap
+  AlertTriangle, ChevronRight, Radio
 } from 'lucide-react'
 import Dashboard from './components/Dashboard'
 import RecordBriefing from './components/RecordBriefing'
@@ -72,20 +76,15 @@ export default function App() {
       {/* Sidebar */}
       <aside className="w-64 bg-hull-900 border-r border-hull-600/30 flex flex-col shrink-0">
         {/* Logo */}
-        <div className="px-5 py-6 border-b border-hull-600/30">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center">
-              <Zap className="w-5 h-5 text-hull-950" strokeWidth={2.5} />
-            </div>
-            <div>
-              <h1 className="font-mono font-bold text-base tracking-tight text-white">
-                Vigil
-              </h1>
-              <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-amber-500/70">
-                Handoff Intelligence
-              </p>
-            </div>
-          </div>
+        <div className="px-5 py-4 border-b border-hull-600/30">
+          <img
+            src="/vigil-logo.png"
+            alt="Vigil"
+            className="h-10 w-auto"
+          />
+          <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-amber-500/70 mt-1.5">
+            Handoff Intelligence
+          </p>
         </div>
 
         {/* Status indicator */}
