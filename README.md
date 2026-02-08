@@ -84,3 +84,6 @@ vigil/
 
 Vigil is built by an engineer who believes manufacturing deserves better tools. Every dollar saved in downtime prevention, every safety incident prevented, every worker who leaves their shift knowing the knowledge will be there for the next crew—that's what drives me.
 
+## Team Members
+Arya Shah
+
